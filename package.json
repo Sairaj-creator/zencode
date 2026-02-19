@@ -3,7 +3,7 @@
   "publisher": "SairajDev",
   "displayName": "ZenCode",
   "description": "Anti-burnout coding assistant",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.108.1"
