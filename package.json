@@ -4,6 +4,10 @@
   "displayName": "ZenCode",
   "description": "Anti-burnout coding assistant",
   "version": "0.4.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sairaj-creator/zencode.git"
+  },
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.108.1"
