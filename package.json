@@ -2,92 +2,185 @@
   "name": "zencode",
   "publisher": "SairajDev",
   "displayName": "ZenCode",
-  "description": "Anti-burnout coding assistant",
-  "version": "0.4.1",
+  "description": "A wellness-focused coding companion that detects fatigue and encourages healthier coding habits.",
+  "version": "1.0.0",
   "icon": "logo.png",
   "engines": {
-    "vscode": "^1.108.1"
+    "vscode": "^1.74.0"
   },
   "categories": [
     "Other"
   ],
   "keywords": [
+    "burnout",
+    "developer wellness",
     "productivity",
     "health",
     "analytics",
-    "typing",
-    "wakatime alternative"
+    "typing"
   ],
   "activationEvents": [
-    "*"
+    "onStartupFinished",
+    "onCommand:zencode.showStats",
+    "onCommand:zencode.openDashboard"
   ],
-  "main": "./dist/extension.js",
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "zencode.showStats",
-        "title": "ZenCode: Show Quick Stats"
+        "title": "ZenCode: Show Current Stats"
       },
       {
         "command": "zencode.openDashboard",
-        "title": "ZenCode: Open Stress Dashboard"
+        "title": "ZenCode: Open Wellness Dashboard"
       }
     ],
     "configuration": {
       "title": "ZenCode",
       "properties": {
+        "zencode.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable ZenCode monitoring."
+        },
         "zencode.fatigueThreshold": {
           "type": "number",
           "default": 20,
-          "description": "Error rate percentage (0-100) that triggers a fatigue warning."
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Fatigue score percentage above which warnings appear."
         },
         "zencode.strictMode": {
           "type": "boolean",
           "default": false,
-          "description": "If true, enforces a break when stress is high."
+          "description": "Show modal warnings when fatigue is detected."
         },
         "zencode.autoZenMode": {
           "type": "boolean",
           "default": false,
-          "description": "If true, automatically toggles VS Code Zen Mode when stress exceeds the threshold."
+          "description": "Automatically enable VS Code Zen Mode once per fatigue episode."
         },
         "zencode.postureReminderInterval": {
           "type": "number",
           "default": 60,
-          "description": "Interval in minutes for posture reminders. Set to 0 to disable."
+          "minimum": 0,
+          "maximum": 1440,
+          "description": "Posture reminder interval in minutes. Set to 0 to disable."
         },
         "zencode.smartBreakDuration": {
           "type": "number",
-          "default": 42,
-          "description": "Duration in minutes of continuous work before suggesting a break."
+          "default": 45,
+          "minimum": 1,
+          "maximum": 240,
+          "description": "Continuous active coding duration in minutes before suggesting a break."
+        },
+        "zencode.wellnessNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable wellness notifications such as posture, hydration, eye, and break reminders."
+        },
+        "zencode.hydrationInterval": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "maximum": 1440,
+          "description": "Hydration reminder interval in minutes. Set to 0 to disable."
+        },
+        "zencode.eyeExerciseInterval": {
+          "type": "number",
+          "default": 20,
+          "minimum": 0,
+          "maximum": 1440,
+          "description": "Eye exercise reminder interval in minutes. Set to 0 to disable."
+        },
+        "zencode.samplingWindowMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "Rolling time window used to calculate fatigue signals."
+        },
+        "zencode.minimumKeystrokeThreshold": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Minimum recent keystrokes required before ZenCode shows a fatigue score."
+        },
+        "zencode.excludedLanguages": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Language IDs where ZenCode should not monitor typing."
+        },
+        "zencode.excludedWorkspaces": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Workspace path fragments where ZenCode should not monitor typing."
+        },
+        "zencode.dataRetentionDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Number of days to keep local fatigue history."
+        },
+        "zencode.statusBarPosition": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "default": "right",
+          "description": "Status bar side used by ZenCode."
+        },
+        "zencode.notificationStyle": {
+          "type": "string",
+          "enum": [
+            "subtle",
+            "normal",
+            "aggressive"
+          ],
+          "default": "normal",
+          "description": "How loudly ZenCode should notify when fatigue is detected."
+        },
+        "zencode.workdayStartHour": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 23,
+          "description": "Hour when ZenCode should start monitoring. Same start and end means all day."
+        },
+        "zencode.workdayEndHour": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 23,
+          "description": "Hour when ZenCode should stop monitoring. Same start and end means all day."
+        },
+        "zencode.privacyMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep wellness data in memory only and skip local history persistence."
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node out/test/fatigueDetector.test.js && node out/test/utils.test.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.108.1",
-    "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "typescript-eslint": "^8.52.0",
-    "eslint": "^9.39.2",
-    "esbuild": "^0.27.2",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "@types/vscode": "1.74.0",
+    "typescript": "^5.9.3"
   }
 }
