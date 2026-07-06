@@ -2,8 +2,12 @@
   "name": "zencode",
   "publisher": "SairajDev",
   "displayName": "ZenCode",
-  "description": "A wellness-focused coding companion that detects fatigue and encourages healthier coding habits.",
+  "description": "A wellness-focused coding companion that tracks cognitive load, provides wellness insights, and promotes healthy coding habits.",
   "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sairaj-creator/zencode.git"
+  },
   "icon": "logo.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -17,7 +21,8 @@
     "productivity",
     "health",
     "analytics",
-    "typing"
+    "typing",
+    "wakatime alternative"
   ],
   "activationEvents": [
     "onStartupFinished",
@@ -182,5 +187,8 @@
     "@types/node": "22.x",
     "@types/vscode": "1.74.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "vscode": "^1.1.38"
   }
 }
