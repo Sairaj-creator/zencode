@@ -181,14 +181,18 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "bundle": "node esbuild.js",
+    "bundle:watch": "node esbuild.js --watch",
+    "bundle:prod": "node esbuild.js --production",
+    "lint": "eslint src --ext .ts",
     "test": "npm run compile && node out/test/fatigueDetector.test.js && node out/test/utils.test.js"
   },
   "devDependencies": {
     "@types/node": "22.x",
     "@types/vscode": "1.74.0",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "vscode": "^1.1.38"
+    "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0"
   }
 }
