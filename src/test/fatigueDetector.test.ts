@@ -27,6 +27,13 @@ function test(name: string, fn: () => void): void {
 
 const now = 1_700_000_000_000;
 
+/** Convert a flat ms-interval array to the timestamped format expected by summarizeFatigueSignals.
+ * Intervals are placed ending at `endTime`, so all fall within any reasonable samplingWindowMinutes. */
+function toIntervalObjects(intervals: number[], endTime: number): { timestamp: number; interval: number }[] {
+    let t = endTime - intervals.reduce((s, v) => s + v, 0);
+    return intervals.map(interval => { t += interval; return { timestamp: t, interval }; });
+}
+
 // ============================================================
 // clamp()
 // ============================================================
@@ -136,13 +143,13 @@ test('minimum keystroke threshold prevents tiny-sample fatigue spikes', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100, 150],
+		interKeyIntervalsMs: toIntervalObjects([100, 150], now),
 		now,
 		samplingWindowMinutes: 5,
 		sessionStartedAt: now - 60000,
 	});
 
-	assert.strictEqual(computeFatigueScore(signals, 50), 0);
+	assert.strictEqual(computeFatigueScore(signals, 50, 0), 0);
 });
 
 test('rolling correction rate contributes to score after enough activity', () => {
@@ -151,7 +158,7 @@ test('rolling correction rate contributes to score after enough activity', () =>
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100, 110, 140, 3000],
+		interKeyIntervalsMs: toIntervalObjects([100, 110, 140, 3000], now),
 		now,
 		samplingWindowMinutes: 5,
 		sessionStartedAt: now - 20 * 60000,
@@ -167,7 +174,7 @@ test('rolling error rate is 0 when nothing is deleted', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 		sessionStartedAt: now - 60000,
@@ -182,7 +189,7 @@ test('rolling error rate is 0.5 when half of keystrokes are deletes', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -193,7 +200,7 @@ test('rolling error rate is 0.5 when half of keystrokes are deletes', () => {
 test('rolling error rate is 0 when no samples exist', () => {
 	const signals = summarizeFatigueSignals({
 		samples: [],
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -212,7 +219,7 @@ test('typing rhythm variance is 0 with fewer than 2 intervals', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100],
+		interKeyIntervalsMs: toIntervalObjects([100], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -226,7 +233,7 @@ test('typing rhythm variance is 0 for perfectly uniform typing', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100, 100, 100, 100, 100],
+		interKeyIntervalsMs: toIntervalObjects([100, 100, 100, 100, 100], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -240,7 +247,7 @@ test('typing rhythm variance is high for erratic typing', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [50, 5000, 80, 4000, 100, 3000],
+		interKeyIntervalsMs: toIntervalObjects([50, 1500, 80, 2500, 100, 2000], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -248,23 +255,23 @@ test('typing rhythm variance is high for erratic typing', () => {
 	assert.ok(signals.typingRhythmVariance > 500, `Expected high variance, got ${signals.typingRhythmVariance}`);
 });
 
-test('typing rhythm variance uses only last 200 intervals', () => {
-	const uniform = new Array(250).fill(100);
-	// Overwrite last 10 with high values to create variance
-	for (let i = 240; i < 250; i++) {
-		uniform[i] = 5000;
-	}
+test('typing rhythm variance uses time-based pruning', () => {
 	const samples: ActivitySample[] = [
 		{ timestamp: now, typed: 50, deleted: 0, fileSwitches: 0, undoRedo: 0 },
 	];
+	const interKeyIntervalsMs = [
+		{ timestamp: now - 6 * 60000, interval: 1500 }, // Out of 5-minute window, erratic
+		{ timestamp: now - 60000, interval: 100 }, // In window
+		{ timestamp: now - 30000, interval: 100 }, // In window
+		{ timestamp: now, interval: 100 }, // In window
+	];
 	const signalsAll = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: uniform,
+		interKeyIntervalsMs,
 		now,
 		samplingWindowMinutes: 5,
 	});
-	// First 50 uniform values should be sliced off, so we get last 200 which includes the erratic ones
-	assert.ok(signalsAll.typingRhythmVariance > 0);
+	assert.strictEqual(signalsAll.typingRhythmVariance, 0);
 });
 
 // ============================================================
@@ -274,7 +281,7 @@ test('typing rhythm variance uses only last 200 intervals', () => {
 test('session duration is 0 when sessionStartedAt is undefined', () => {
 	const signals = summarizeFatigueSignals({
 		samples: [],
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -285,7 +292,7 @@ test('session duration is 0 when sessionStartedAt is undefined', () => {
 test('session duration is calculated correctly from sessionStartedAt', () => {
 	const signals = summarizeFatigueSignals({
 		samples: [],
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 		sessionStartedAt: now - 30 * 60000,
@@ -305,7 +312,7 @@ test('pause frequency counts intervals >= 3000ms per window minute', () => {
 	// 3 pauses (>= 3000ms) over a 5-minute window = 0.6 per minute
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100, 3000, 200, 5000, 150, 4000],
+		interKeyIntervalsMs: toIntervalObjects([100, 3000, 200, 5000, 150, 4000], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -319,7 +326,7 @@ test('pause frequency is 0 when all intervals are short', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100, 200, 150, 80],
+		interKeyIntervalsMs: toIntervalObjects([100, 200, 150, 80], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -337,7 +344,7 @@ test('undo/redo rate reflects ratio of undo/redo to total keystrokes', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -351,7 +358,7 @@ test('undo/redo rate is 0 when no undo/redo operations', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -359,32 +366,6 @@ test('undo/redo rate is 0 when no undo/redo operations', () => {
 	assert.strictEqual(signals.undoRedoRate, 0);
 });
 
-// ============================================================
-// summarizeFatigueSignals() — error diagnostic delta
-// ============================================================
-
-test('error diagnostic delta defaults to 0 when not provided', () => {
-	const signals = summarizeFatigueSignals({
-		samples: [],
-		interKeyIntervalsMs: [],
-		now,
-		samplingWindowMinutes: 5,
-	});
-
-	assert.strictEqual(signals.errorDiagnosticDelta, 0);
-});
-
-test('error diagnostic delta is passed through when provided', () => {
-	const signals = summarizeFatigueSignals({
-		samples: [],
-		interKeyIntervalsMs: [],
-		now,
-		samplingWindowMinutes: 5,
-		errorDiagnosticDelta: 15,
-	});
-
-	assert.strictEqual(signals.errorDiagnosticDelta, 15);
-});
 
 // ============================================================
 // summarizeFatigueSignals() — multi-sample aggregation
@@ -398,7 +379,7 @@ test('signals aggregate across multiple samples in window', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -424,11 +405,10 @@ test('fatigue score is 0 when all signals are zero', () => {
 		sessionDurationMinutes: 0,
 		pauseFrequency: 0,
 		undoRedoRate: 0,
-		errorDiagnosticDelta: 0,
 		sampleKeystrokes: 100,
 	};
 
-	assert.strictEqual(computeFatigueScore(signals, 50), 0);
+	assert.strictEqual(computeFatigueScore(signals, 50, 0), 0);
 });
 
 test('fatigue score is capped at 100 even with extreme signals', () => {
@@ -438,11 +418,10 @@ test('fatigue score is capped at 100 even with extreme signals', () => {
 		sessionDurationMinutes: 300,
 		pauseFrequency: 20,
 		undoRedoRate: 0.5,
-		errorDiagnosticDelta: 100,
 		sampleKeystrokes: 100,
 	};
 
-	assert.strictEqual(computeFatigueScore(signals, 50), 100);
+	assert.strictEqual(computeFatigueScore(signals, 50, 0), 100);
 });
 
 test('fatigue score weights: error rate has the largest weight (45)', () => {
@@ -453,11 +432,10 @@ test('fatigue score weights: error rate has the largest weight (45)', () => {
 		sessionDurationMinutes: 0,
 		pauseFrequency: 0,
 		undoRedoRate: 0,
-		errorDiagnosticDelta: 0,
 		sampleKeystrokes: 100,
 	};
 
-	assert.strictEqual(computeFatigueScore(signalsErrorOnly, 50), 45);
+	assert.strictEqual(computeFatigueScore(signalsErrorOnly, 50, 0), 45);
 });
 
 test('fatigue score partial contribution: medium error rate gives proportional score', () => {
@@ -467,12 +445,11 @@ test('fatigue score partial contribution: medium error rate gives proportional s
 		sessionDurationMinutes: 0,
 		pauseFrequency: 0,
 		undoRedoRate: 0,
-		errorDiagnosticDelta: 0,
 		sampleKeystrokes: 100,
 	};
 
 	// 0.5 * 45 = 22.5, rounded = 23
-	assert.strictEqual(computeFatigueScore(signals, 50), 23);
+	assert.strictEqual(computeFatigueScore(signals, 50, 0), 23);
 });
 
 test('fatigue score includes session duration contribution at weight 15', () => {
@@ -482,25 +459,23 @@ test('fatigue score includes session duration contribution at weight 15', () => 
 		sessionDurationMinutes: 90, // at highWatermark = normalize to 1.0
 		pauseFrequency: 0,
 		undoRedoRate: 0,
-		errorDiagnosticDelta: 0,
 		sampleKeystrokes: 100,
 	};
 
 	assert.strictEqual(computeFatigueScore(signals, 50), 15);
 });
 
-test('fatigue score includes undo/redo at weight 10', () => {
+test('fatigue score includes undo/redo at weight 15', () => {
 	const signals: FatigueSignals = {
 		rollingErrorRate: 0,
 		typingRhythmVariance: 0,
 		sessionDurationMinutes: 0,
 		pauseFrequency: 0,
 		undoRedoRate: 0.12, // at highWatermark = normalize to 1.0
-		errorDiagnosticDelta: 0,
 		sampleKeystrokes: 100,
 	};
 
-	assert.strictEqual(computeFatigueScore(signals, 50), 10);
+	assert.strictEqual(computeFatigueScore(signals, 50, 0), 15);
 });
 
 test('fatigue score returns 0 when keystrokes below custom threshold', () => {
@@ -510,7 +485,6 @@ test('fatigue score returns 0 when keystrokes below custom threshold', () => {
 		sessionDurationMinutes: 90,
 		pauseFrequency: 4,
 		undoRedoRate: 0.12,
-		errorDiagnosticDelta: 20,
 		sampleKeystrokes: 10, // below threshold of 20
 	};
 
@@ -524,25 +498,10 @@ test('fatigue score with default threshold (50) returns 0 for insufficient keyst
 		sessionDurationMinutes: 90,
 		pauseFrequency: 4,
 		undoRedoRate: 0.12,
-		errorDiagnosticDelta: 20,
 		sampleKeystrokes: 49,
 	};
 
 	assert.strictEqual(computeFatigueScore(signals), 0);
-});
-
-test('fatigue score negative diagnostic delta is clamped to 0', () => {
-	const signals: FatigueSignals = {
-		rollingErrorRate: 0,
-		typingRhythmVariance: 0,
-		sessionDurationMinutes: 0,
-		pauseFrequency: 0,
-		undoRedoRate: 0,
-		errorDiagnosticDelta: -10, // negative — should be Math.max(0, ...) = 0
-		sampleKeystrokes: 100,
-	};
-
-	assert.strictEqual(computeFatigueScore(signals, 50), 0);
 });
 
 // ============================================================
@@ -557,7 +516,7 @@ test('end-to-end: moderate fatigue scenario produces reasonable score', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [100, 200, 3500, 120, 150, 4000, 110, 3100],
+		interKeyIntervalsMs: toIntervalObjects([100, 200, 3500, 120, 150, 4000, 110, 3100], now),
 		now,
 		samplingWindowMinutes: 5,
 		sessionStartedAt: now - 45 * 60000,
@@ -572,7 +531,7 @@ test('end-to-end: moderate fatigue scenario produces reasonable score', () => {
 test('end-to-end: zero activity scenario produces score of 0', () => {
 	const signals = summarizeFatigueSignals({
 		samples: [],
-		interKeyIntervalsMs: [],
+		interKeyIntervalsMs: toIntervalObjects([], now),
 		now,
 		samplingWindowMinutes: 5,
 	});
@@ -587,11 +546,10 @@ test('end-to-end: heavy fatigue scenario produces high score', () => {
 	];
 	const signals = summarizeFatigueSignals({
 		samples,
-		interKeyIntervalsMs: [50, 5000, 80, 6000, 100, 4500, 200, 7000],
+		interKeyIntervalsMs: toIntervalObjects([50, 5000, 80, 6000, 100, 4500, 200, 7000], now),
 		now,
 		samplingWindowMinutes: 5,
 		sessionStartedAt: now - 120 * 60000,
-		errorDiagnosticDelta: 25,
 	});
 
 	const score = computeFatigueScore(signals, 50);

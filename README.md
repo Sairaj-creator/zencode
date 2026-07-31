@@ -9,8 +9,6 @@
 
 **ZenCode** silently monitors your typing patterns to detect fatigue before it turns into burnout. It integrates seamlessly into your status bar, providing real-time feedback without breaking your flow.
 
-![ZenCode Demo](https://raw.githubusercontent.com/SairajDev/zencode/main/images/demo.gif)
-*(Add a 5-second GIF here showing the status bar changing and dashboard opening)*
 
 ## Features
 
@@ -32,7 +30,7 @@ Control how ZenCode works in your User Settings:
 1. Install the extension.
 2. The extension activates automatically when you start typing.
 3. Check the **Status Bar** (bottom right) for your live score.
-4. Click the status bar item or run `ZenCode: Open Stress Dashboard` to see detailed analytics.
+4. Click the status bar item or run `ZenCode: Open Wellness Dashboard` to see detailed analytics.
 
 ## Configuration
 

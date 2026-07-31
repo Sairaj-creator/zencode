@@ -12,22 +12,21 @@ export interface FatigueSignals {
 	sessionDurationMinutes: number;
 	pauseFrequency: number;
 	undoRedoRate: number;
-	errorDiagnosticDelta: number;
 	sampleKeystrokes: number;
 }
 
 export interface SignalSummaryInput {
 	samples: ActivitySample[];
-	interKeyIntervalsMs: number[];
+	interKeyIntervalsMs: { timestamp: number; interval: number }[];
 	now: number;
 	samplingWindowMinutes: number;
 	sessionStartedAt?: number;
-	errorDiagnosticDelta?: number;
 }
 
 export const DEFAULT_MINIMUM_KEYSTROKE_THRESHOLD = 50;
 export const DEFAULT_SAMPLING_WINDOW_MINUTES = 5;
 export const DEFAULT_IDLE_RESET_MINUTES = 5;
+export const DEFAULT_MINIMUM_SESSION_MINUTES = 3;
 
 export function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
@@ -72,15 +71,18 @@ export function summarizeFatigueSignals(input: SignalSummaryInput): FatigueSigna
 	const sampleKeystrokes = totals.typed + totals.deleted;
 	const rollingErrorRate = sampleKeystrokes > 0 ? totals.deleted / sampleKeystrokes : 0;
 	const undoRedoRate = sampleKeystrokes > 0 ? totals.undoRedo / sampleKeystrokes : 0;
-	const recentIntervals = input.interKeyIntervalsMs.slice(-200);
+	
+	const windowMs = Math.max(1, input.samplingWindowMinutes) * 60 * 1000;
+	const recentIntervalObjects = input.interKeyIntervalsMs.filter(i => input.now - i.timestamp <= windowMs);
+	const recentIntervals = recentIntervalObjects.map(i => i.interval);
+	const intervalsForVariance = recentIntervals.filter(i => i < 3000);
 
 	return {
 		rollingErrorRate,
-		typingRhythmVariance: standardDeviation(recentIntervals),
+		typingRhythmVariance: standardDeviation(intervalsForVariance),
 		sessionDurationMinutes: input.sessionStartedAt ? Math.max(0, (input.now - input.sessionStartedAt) / 60000) : 0,
 		pauseFrequency: countPauses(recentIntervals) / Math.max(1, input.samplingWindowMinutes),
 		undoRedoRate,
-		errorDiagnosticDelta: input.errorDiagnosticDelta ?? 0,
 		sampleKeystrokes,
 	};
 }
@@ -88,8 +90,13 @@ export function summarizeFatigueSignals(input: SignalSummaryInput): FatigueSigna
 export function computeFatigueScore(
 	signals: FatigueSignals,
 	minimumKeystrokeThreshold = DEFAULT_MINIMUM_KEYSTROKE_THRESHOLD,
+	minimumSessionMinutes = DEFAULT_MINIMUM_SESSION_MINUTES,
 ): number {
 	if (signals.sampleKeystrokes < minimumKeystrokeThreshold) {
+		return 0;
+	}
+
+	if (signals.sessionDurationMinutes < minimumSessionMinutes) {
 		return 0;
 	}
 
@@ -98,8 +105,7 @@ export function computeFatigueScore(
 		normalize(signals.typingRhythmVariance, 1200) * 15 +
 		normalize(signals.sessionDurationMinutes, 90) * 15 +
 		normalize(signals.pauseFrequency, 4) * 10 +
-		normalize(signals.undoRedoRate, 0.12) * 10 +
-		normalize(Math.max(0, signals.errorDiagnosticDelta), 20) * 5;
+		normalize(signals.undoRedoRate, 0.12) * 15;
 
 	return Math.round(clamp(weightedScore, 0, 100));
 }

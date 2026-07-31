@@ -33,6 +33,7 @@ interface ZenConfig {
 	eyeExerciseInterval: number;
 	samplingWindowMinutes: number;
 	minimumKeystrokeThreshold: number;
+	minimumSessionMinutes: number;
 	excludedLanguages: string[];
 	excludedWorkspaces: string[];
 	dataRetentionDays: number;
@@ -46,7 +47,7 @@ interface ZenConfig {
 const HISTORY_STORAGE_KEY = 'zencode.history.v1';
 const RECORDING_INTERVAL_MS = 30000;
 const DEFAULT_SMART_BREAK_DURATION_MINUTES = 45;
-const MAX_INTER_KEY_INTERVALS = 500;
+const MAX_INTER_KEY_INTERVALS = 50000;
 const FATIGUE_NOTICE_COOLDOWN_MS = 15 * 60 * 1000;
 
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -61,7 +62,7 @@ let eyeExerciseIntervalId: NodeJS.Timeout | undefined;
 
 let samples: ActivitySample[] = [];
 let history: FatigueHistoryPoint[] = [];
-let interKeyIntervalsMs: number[] = [];
+let interKeyIntervalsMs: { timestamp: number; interval: number }[] = [];
 let currentTyped = 0;
 let currentDeleted = 0;
 let currentFileSwitches = 0;
@@ -161,16 +162,28 @@ function handleDocumentChange(event: vscode.TextDocumentChangeEvent): void {
 	lastActivityAt = now;
 	sessionStartedAt ??= now;
 
+	let isBulkEdit = false;
+	for (const change of event.contentChanges) {
+		if (change.text.length > 100 || (change.rangeLength ?? 0) > 100) {
+			isBulkEdit = true;
+			break;
+		}
+	}
+
 	if (lastChangeAt !== undefined) {
 		const interval = now - lastChangeAt;
-		if (interval > 0) {
-			interKeyIntervalsMs.push(interval);
+		if (interval > 0 && !isBulkEdit) {
+			interKeyIntervalsMs.push({ timestamp: now, interval });
 			if (interKeyIntervalsMs.length > MAX_INTER_KEY_INTERVALS) {
 				interKeyIntervalsMs = interKeyIntervalsMs.slice(-MAX_INTER_KEY_INTERVALS);
 			}
 		}
 	}
 	lastChangeAt = now;
+
+	if (isBulkEdit) {
+		return;
+	}
 
 	for (const change of event.contentChanges) {
 		currentTyped += change.text.length;
@@ -235,7 +248,7 @@ function recordActivity(context: vscode.ExtensionContext): void {
 		samplingWindowMinutes: config.samplingWindowMinutes,
 		sessionStartedAt,
 	});
-	lastStressScore = computeFatigueScore(lastSignals, config.minimumKeystrokeThreshold);
+	lastStressScore = computeFatigueScore(lastSignals, config.minimumKeystrokeThreshold, config.minimumSessionMinutes);
 
 	history.push({
 		timestamp: now,
@@ -247,7 +260,8 @@ function recordActivity(context: vscode.ExtensionContext): void {
 	trimHistory(now);
 	persistHistory(context);
 
-	updateStatusBar(lastSignals.sampleKeystrokes < config.minimumKeystrokeThreshold ? 'warming' : 'active');
+	const isWarming = lastSignals.sampleKeystrokes < config.minimumKeystrokeThreshold || lastSignals.sessionDurationMinutes < config.minimumSessionMinutes;
+	updateStatusBar(isWarming ? 'warming' : 'active');
 	maybeSuggestSmartBreak(now);
 	maybeNotifyFatigue(lastStressScore);
 	refreshDashboard();
@@ -357,7 +371,7 @@ function updateStatusBar(state: 'active' | 'warming' | 'idle' | 'disabled' | 'ou
 
 function buildStatusTooltip(state: string): string {
 	if (state === 'warming') {
-		return `ZenCode is collecting ${config.minimumKeystrokeThreshold} keystrokes before scoring fatigue.`;
+		return `ZenCode is collecting ${config.minimumKeystrokeThreshold} keystrokes and waiting for ${config.minimumSessionMinutes} minutes of session time before scoring fatigue.`;
 	}
 
 	if (state === 'disabled') {
@@ -915,6 +929,7 @@ function readConfig(): ZenConfig {
 			1,
 			10000,
 		),
+		minimumSessionMinutes: getNumber(workspaceConfig, 'minimumSessionMinutes', 3, 1, 30),
 		excludedLanguages: getStringArray(workspaceConfig, 'excludedLanguages'),
 		excludedWorkspaces: getStringArray(workspaceConfig, 'excludedWorkspaces'),
 		dataRetentionDays: getNumber(workspaceConfig, 'dataRetentionDays', 30, 1, 365),
