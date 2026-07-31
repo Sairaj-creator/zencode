@@ -3,7 +3,7 @@
   "publisher": "SairajDev",
   "displayName": "ZenCode",
   "description": "A wellness-focused coding companion that tracks cognitive load, provides wellness insights, and promotes healthy coding habits.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/Sairaj-creator/zencode.git"
