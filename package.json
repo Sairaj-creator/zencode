@@ -25,9 +25,7 @@
     "wakatime alternative"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onCommand:zencode.showStats",
-    "onCommand:zencode.openDashboard"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
